@@ -1,7 +1,11 @@
 package com.example.hundun.socketdemo;
 
 import android.app.Activity;
+import android.content.Context;
+import android.database.ContentObserver;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -21,35 +25,17 @@ public class MainActivity extends Activity{
     private final String HOST_IP="192.168.4.1";
     private final int HOST_PORT=2121;
 
+    public static final String URI = "content://sms/";
+
+    //UI
     Button btn_accept;
     EditText txtCommand;
     EditText txtEcho;
 
-    public class MyThread extends Thread
-    {
-        private String command;
-        EditText txtEcho;
+    //abstract
 
-        public MyThread(String command,EditText txtEcho)
-        {
-            this.command=command;
-            this.txtEcho=txtEcho;
-            //Thread thread =this;
-            //thread.run();
-        }
 
-        @Override
-        public void run() {
-            try {
-                String echo=acceptServer(command);
-                txtEcho.append("\n"+echo);
-            } catch (Exception e) {
-                e.printStackTrace();
-                //Toast.makeText(getApplicationContext(), e.getMessage(),Toast.LENGTH_SHORT).show();
-            }
-        }
 
-    }
 
 
     @Override
@@ -60,6 +46,21 @@ public class MainActivity extends Activity{
         btn_accept = (Button) findViewById(R.id.btn_accept);
         txtCommand=(EditText) findViewById(R.id.txtCommand);
         txtEcho=(EditText) findViewById(R.id.txtEcho);
+
+        //注册内容观察者
+        SMSContentObserver smsContentObserver =
+                new SMSContentObserver(new Handler(),this);
+
+        this.getContentResolver().registerContentObserver
+                (Uri.parse(URI), true, smsContentObserver);
+
+        //回调
+        smsContentObserver.setOnReceivedMessageListener(new SMSContentObserver.MessageListener() {
+            @Override
+            public void OnReceived(String message) {
+                txtEcho.append(message+'\n');
+            }
+        });
 
         btn_accept.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -85,8 +86,8 @@ public class MainActivity extends Activity{
         BufferedReader br = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
         //获取客户端的IP地址
-        InetAddress address = InetAddress.getLocalHost();
-        String ip = address.getHostAddress();
+        //InetAddress address = InetAddress.getLocalHost();
+        //String ip = address.getHostAddress();
         pw.write(command);
         pw.flush();
 
@@ -110,6 +111,32 @@ public class MainActivity extends Activity{
         }
 
         return echo;
+
+    }
+
+    public class MyThread extends Thread
+    {
+        private String command;
+        EditText txtEcho;
+
+        public MyThread(String command,EditText txtEcho)
+        {
+            this.command=command;
+            this.txtEcho=txtEcho;
+            //Thread thread =this;
+            //thread.run();
+        }
+
+        @Override
+        public void run() {
+            try {
+                String echo=acceptServer(command);
+                txtEcho.append("\n"+echo);
+            } catch (Exception e) {
+                e.printStackTrace();
+                //Toast.makeText(getApplicationContext(), e.getMessage(),Toast.LENGTH_SHORT).show();
+            }
+        }
 
     }
 }
