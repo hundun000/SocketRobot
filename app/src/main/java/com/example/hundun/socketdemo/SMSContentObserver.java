@@ -25,10 +25,12 @@ public class SMSContentObserver extends ContentObserver {
     private Activity mActivity;
     private List<SmsInfo> mSmsInfoList;
     private MessageListener mMessageListener;
+    private String lastSmsId;
 
     public SMSContentObserver(Handler handler, Activity activity) {
         super(handler);
         this.mActivity = activity;
+        lastSmsId=null;
     }
 
     @Override
@@ -36,9 +38,14 @@ public class SMSContentObserver extends ContentObserver {
         super.onChange(selfChange);
         Uri uri = Uri.parse(SMS_URI_INBOX);
         mSmsInfoList = this.getSmsInfo(uri,mActivity);
-        mMessageListener.OnReceived(mSmsInfoList.get(0).getSmsbody());
-        System.out.println("Message content is:"+mSmsInfoList.get(0).getSmsbody());
-        System.out.println("Message info is:"+mSmsInfoList.get(0));
+        SmsInfo targetSms=mSmsInfoList.get(0);
+        if(targetSms.getId().equals(lastSmsId))
+            return;//skip sms which had handled
+        else
+            lastSmsId=targetSms.getId();
+        mMessageListener.OnReceived(targetSms.getSmsbody());
+        //System.out.println("Message content is:"+mSmsInfoList.get(0).getSmsbody());
+        //System.out.println("Message info is:"+mSmsInfoList.get(0));
     }
 
     /**
@@ -50,6 +57,7 @@ public class SMSContentObserver extends ContentObserver {
         List<SmsInfo> smsInfoList=new ArrayList<SmsInfo>();
         String[] projection = new String[] { "_id", "address", "person","body", "date", "type" };
         Cursor cusor = activity.managedQuery(uri, projection, null, null,"date desc limit 1");
+        int idColumn=cusor.getColumnIndex("_id");
         int nameColumn = cusor.getColumnIndex("person");
         int phoneNumberColumn = cusor.getColumnIndex("address");
         int smsbodyColumn = cusor.getColumnIndex("body");
@@ -58,6 +66,7 @@ public class SMSContentObserver extends ContentObserver {
         if (cusor != null) {
             while (cusor.moveToNext()) {
                 SmsInfo smsinfo = new SmsInfo();
+                smsinfo.setId(cusor.getString(idColumn));
                 smsinfo.setName(cusor.getString(nameColumn));
                 smsinfo.setDate(cusor.getString(dateColumn));
                 smsinfo.setPhoneNumber(cusor.getString(phoneNumberColumn));
@@ -67,7 +76,7 @@ public class SMSContentObserver extends ContentObserver {
             }
             cusor.close();
         }
-        System.out.println("smsInfoList.size()="+smsInfoList.size());
+        //System.out.println("smsInfoList.size()="+smsInfoList.size());
         return smsInfoList;
     }
 

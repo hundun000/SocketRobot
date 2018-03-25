@@ -264,7 +264,7 @@ void wifiRestart(){
   wifi.setTransportToTCP();       // TCP模式（默认设置）
   wifi.endSendWithNewline(true); // 发送数据自动以\r\n结尾（默认设置）
 
-  for(int retry=0;retry<3;retry++){
+  //for(int retry=0;retry<3;retry++){
     wifi_started = wifi.begin();    // WIFI启动
     if (wifi_started) { // 如果WIFI初始化成功
       //wifi.connectToAP(MY_SSID, PASSWORD); // 指定用户名密码连接WIFI
@@ -272,12 +272,12 @@ void wifiRestart(){
       wifi.startLocalAPAndServer("MY_CONFIG_AP", "password", "5", "2121");
       Serial.println("ESP8266 is working!");
       Serial.println(wifi.getIP());
-      break;
+      //break;
     } else {
       // ESP8266 isn't working..
       Serial.println("ESP8266 isn't working..");
     }
-  }
+  //}
 }
 
 

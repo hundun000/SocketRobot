@@ -29,10 +29,18 @@ public class MainActivity extends Activity{
 
     //UI
     Button btn_accept;
+    Button btn_modeOn;
+    Button btn_modeOff;
+    Button btn_modeAnalog;
     EditText txtCommand;
     EditText txtEcho;
 
     //abstract
+
+    //cmd
+    final String CMD_ON="-MODE on";
+    final String CMD_OFF="-MODE off";
+    final String CMD_ANALOG="-MODE heat";
 
 
 
@@ -44,6 +52,9 @@ public class MainActivity extends Activity{
         setContentView(R.layout.activity_main);
 
         btn_accept = (Button) findViewById(R.id.btn_accept);
+        btn_modeOn = (Button) findViewById(R.id.btn_modeOn);
+        btn_modeOff = (Button) findViewById(R.id.btn_modeOff);
+        btn_modeAnalog = (Button) findViewById(R.id.btn_modeAnalog);
         txtCommand=(EditText) findViewById(R.id.txtCommand);
         txtEcho=(EditText) findViewById(R.id.txtEcho);
 
@@ -58,22 +69,44 @@ public class MainActivity extends Activity{
         smsContentObserver.setOnReceivedMessageListener(new SMSContentObserver.MessageListener() {
             @Override
             public void OnReceived(String message) {
-                txtEcho.append(message+'\n');
+                txtEcho.append("sms:"+message+'\n');
+                if(message.equals(CMD_ON)||message.equals(CMD_OFF)||message.equals(CMD_ANALOG)){
+                    txtCommand.setText(message);
+                    commitCommand();
+                }
             }
         });
 
         btn_accept.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                String command=txtCommand.getText().toString();
-                txtCommand.setText("");
-                Thread thread=new MyThread(command,txtEcho);
-                thread.start();
+                commitCommand();
+            }});
+        btn_modeOn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                txtCommand.setText(CMD_ON);
+            }});
+        btn_modeOff.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                txtCommand.setText(CMD_OFF);
+            }});
+        btn_modeAnalog.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                txtCommand.setText(CMD_ANALOG);
             }});
 
-        Toast.makeText(getApplicationContext(), "init",Toast.LENGTH_SHORT).show();
+        //Toast.makeText(getApplicationContext(), "init",Toast.LENGTH_SHORT).show();
     }
 
+    private void commitCommand(){
+        String command=txtCommand.getText().toString();
+        txtCommand.setText("");
+        Thread thread=new MyThread(command,txtEcho);
+        thread.start();
+    }
 
     private String acceptServer(String command) throws IOException {
         String echo;
@@ -90,8 +123,6 @@ public class MainActivity extends Activity{
         //String ip = address.getHostAddress();
         pw.write(command);
         pw.flush();
-
-
 
         try{
             //从服务器端接收数据有个时间限制（系统自设，也可以自己设置），超过了这个时间，便会抛出该异常
@@ -110,9 +141,10 @@ public class MainActivity extends Activity{
             socket.close(); //只关闭socket，其关联的输入输出流也会被关闭
         }
 
-        return echo;
+        return "echo："+echo;
 
     }
+
 
     public class MyThread extends Thread
     {
@@ -137,6 +169,9 @@ public class MainActivity extends Activity{
                 //Toast.makeText(getApplicationContext(), e.getMessage(),Toast.LENGTH_SHORT).show();
             }
         }
-
     }
+
+
+
+
 }

@@ -5,7 +5,8 @@ package com.example.hundun.socketdemo;
  */
 
 public class SmsInfo {
-
+    //短信id
+    private String id;
     //短信内容
     private String smsbody;
     //发送短信的电话号码
@@ -55,6 +56,14 @@ public class SmsInfo {
 
     public void setType(String type) {
         this.type = type;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
     }
 
     @Override
