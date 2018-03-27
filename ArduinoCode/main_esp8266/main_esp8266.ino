@@ -11,25 +11,29 @@ WifiConnection *connections;
 bool wifi_started = false;
 
 enum WorkMode{
-  WorkMode_ON,WorkMode_OFF,WorkMode_HEAT_DETECT
+  WorkMode_ON,WorkMode_OFF,WorkMode_ANALOG_USB,WorkMode_TIMING_ON,WorkMode_TIMING_OFF
 };
 enum SenserType{
   SenserType_DIGITAL,SenserType_ANALOG,SenserType_UNUSE
 };
 
 //******* data variable ***************
+//common part
 WorkMode workMode;
 SenserType type_modeUsingSeneser;
 int pin_modeUsingSeneser;
-
+//digital part
 int levelOutput_whenDigitalHigh;
-
+//analog part
 int thresholdValue_analogPin;
 int levelOutput_whenBiggerThanThreshold;
-int numAnalogIgnore;   //prevent  jitter
+int targetLevelLast_analogIgnore;   //prevent  jitter,record trying ele-level
+int numAnalogIgnore;   //prevent  jitter,record trying times
 const int MAX_ANALOG_IGNORE=2; //after count this num times ,accept the analog 
-
-
+//timing part
+WorkMode mode_afterTimeout;
+unsigned long time_timingTarget;
+const int TIMING_MAX_MINUTE=1440;
 //************ function prototype ***********
 void wifiRestart();
 bool checkConnect();
@@ -37,7 +41,10 @@ bool handleInput();
 void handleModeUpdate();
 bool isSenserMode();
 bool setOutputRelay(int);
-
+void resetSenserArgument();
+void resetDigitalArgument();
+void resetAnalogArgument();
+void resetTimingArgument();
 //************ pin and state ***********
 const int PIN_OUTPUT_RELAY=13;//插座输出继电器控制端 //when debug,set to 13
 int ele_level_outputRelay;
@@ -47,16 +54,19 @@ const int PIN_SENSER_USB_ANALOG_YELLOW=A0;
 
 //*********** command ************
 const String CMD_SET_MODE="MODE ";
+const String CMD_SET_TIMING="TIMING ";
 
 //********* mode ***********
-const String MODE_HEAT_DETECT="heat";
+const String MODE_ANALOG_USB="analog";
 const String MODE_ON="on";
 const String MODE_OFF="off";
+const String MODE_TIMING_ON="timing_on";
+const String MODE_TIMING_OFF="timing_off";
 
 
 //******* for debug *******
 const int PIN_DEBUG_SETMODE=50;//按下按钮，进入某个mode，方便改mode的debug
-const WorkMode DEBUG_MODE=WorkMode_HEAT_DETECT;
+const WorkMode DEBUG_MODE=WorkMode_ANALOG_USB;
 
 
 void setup() {
@@ -110,16 +120,51 @@ void loop() {
     if(isSenserMode()){
       if(type_modeUsingSeneser==SenserType_ANALOG){
         int input=analogRead(pin_modeUsingSeneser);
-        int asDigital=digitalRead(pin_modeUsingSeneser);
+        //int asDigital=digitalRead(pin_modeUsingSeneser);
         Serial.print("analogValue=");
         Serial.print(input);
-        Serial.print(" asDigitalogValue=");
-        Serial.print(asDigital);
-        Serial.println("\n");
+        //Serial.print(" asDigitalogValue=");
+        //Serial.print(asDigital);
+        //Serial.println("\n");
+
+        int targetLevelCurrent;
         if(input>thresholdValue_analogPin xor levelOutput_whenBiggerThanThreshold==LOW) // True(set HIGH) only: (in>thd && whenBig==High),(in<thd && whenBig==LOW),thus operateion "xor"
-          setOutputRelay(HIGH);
+          targetLevelCurrent=HIGH;
         else
-          setOutputRelay(LOW);
+          targetLevelCurrent=LOW;
+
+        if(targetLevelCurrent==targetLevelLast_analogIgnore){
+          numAnalogIgnore--;
+            if(numAnalogIgnore==0){
+              //commit this analog caused relay change
+              numAnalogIgnore=MAX_ANALOG_IGNORE;
+              setOutputRelay(targetLevelCurrent);
+            }
+        }
+        else{
+          //not same target ele-level with before,reset counter and renew targetLevelLast_analogIgnore
+          numAnalogIgnore=MAX_ANALOG_IGNORE;
+          targetLevelLast_analogIgnore=targetLevelCurrent;
+        }
+      }
+      
+    }
+    else if(workMode==WorkMode_TIMING_ON||workMode==WorkMode_TIMING_OFF){
+      if(time_timingTarget==-1){
+        Serial.println("Timing not set time.");
+        delay(1000);
+      }
+      else{
+         if(millis()>=time_timingTarget){
+          Serial.println("Timing done.");
+          workMode=mode_afterTimeout;
+          handleModeUpdate();
+        }
+        else{
+          Serial.print("Timing:");
+          Serial.println((time_timingTarget-millis())/1000);
+          delay(1000);
+        }
       }
       
     }
@@ -150,7 +195,7 @@ String getEleLevelString(int level){
 }
 
 bool isSenserMode(){
-  if(workMode==WorkMode_HEAT_DETECT)
+  if(workMode==WorkMode_ANALOG_USB)
     return true;
   else
     return false;
@@ -179,9 +224,9 @@ bool handleInput(){
     if(inMassage.startsWith(CMD_SET_MODE)){
       echoText+="command=set_mode ";
       String argument=inMassage.substring(CMD_SET_MODE.length());
-      if(argument.equalsIgnoreCase(MODE_HEAT_DETECT)){
+      if(argument.equalsIgnoreCase(MODE_ANALOG_USB)){
         echoText+="mode=heat_detect ";
-        workMode=WorkMode_HEAT_DETECT;
+        workMode=WorkMode_ANALOG_USB;
       }
       else if(argument.equalsIgnoreCase(MODE_ON)){
         echoText+="mode=always_on ";
@@ -191,10 +236,30 @@ bool handleInput(){
         echoText+="mode=always_off ";
         workMode=WorkMode_OFF;
       }
+      else if(argument.equalsIgnoreCase(MODE_TIMING_ON)){
+        echoText+="mode=timing_on ";
+        workMode=WorkMode_TIMING_ON;
+      }
+      else if(argument.equalsIgnoreCase(MODE_TIMING_OFF)){
+        echoText+="mode=timing_off ";
+        workMode=WorkMode_TIMING_OFF;
+      }
       else{
         echoText+="mode erro ";
         isModeChanged=false;
       }
+    }
+    else if(inMassage.startsWith(CMD_SET_TIMING)){
+      echoText+="command=set_timing ";
+      long argument=inMassage.substring(CMD_SET_TIMING.length()).toInt();
+      if(argument>0&&argument<=TIMING_MAX_MINUTE){
+        echoText+="timing="+String(argument*1000);//when debug,set argument as second
+        time_timingTarget=millis()+argument*1000;//when debug,set argument as second
+      }
+      else{
+        echoText+="time erro,time should between 1 and 1440";
+      }
+      isModeChanged=false;
     }
     else{
         echoText+="command erro ";
@@ -206,7 +271,6 @@ bool handleInput(){
     wifi.send(in.channel, echoText);
     //nextPing = millis() + 10000;
 
-    
   }
   else
     isModeChanged=false;
@@ -215,50 +279,74 @@ bool handleInput(){
 }
 
 void handleModeUpdate(){
-/*The form is:
- * if(mode==XXX){
- * /----common set part------/
- * 
- * /----digital set part------/
- * 
- * /----analog set part------/
- * }
- */
-  if(workMode==WorkMode_HEAT_DETECT){
+  if(workMode==WorkMode_ANALOG_USB){
     type_modeUsingSeneser=SenserType_ANALOG;
     pin_modeUsingSeneser=PIN_SENSER_USB_ANALOG_YELLOW;
     
-    levelOutput_whenDigitalHigh=-1;
-    
     thresholdValue_analogPin=150;
     levelOutput_whenBiggerThanThreshold=HIGH; //bigger<->have people<->turn on electry
+    targetLevelLast_analogIgnore=-1;
     numAnalogIgnore=MAX_ANALOG_IGNORE;
-  }
-  else if(workMode==WorkMode_ON){
     
-    setOutputRelay(HIGH);
+    resetDigitalArgument();
+    resetTimingArgument(); 
+  }
+  else if(workMode==WorkMode_TIMING_ON){
     type_modeUsingSeneser=SenserType_UNUSE;
     pin_modeUsingSeneser=-1;
     
-    levelOutput_whenDigitalHigh=-1;
+    mode_afterTimeout=WorkMode_ON;
+    time_timingTarget=-1;
     
-    thresholdValue_analogPin=-1;
-    levelOutput_whenBiggerThanThreshold=-1;
-    numAnalogIgnore=-1;
+    resetDigitalArgument();
+    resetAnalogArgument(); 
+  }
+  else if(workMode==WorkMode_TIMING_OFF){
+    type_modeUsingSeneser=SenserType_UNUSE;
+    pin_modeUsingSeneser=-1;
+    
+    mode_afterTimeout=WorkMode_OFF;
+    time_timingTarget=-1;
+    
+    resetDigitalArgument();
+    resetAnalogArgument(); 
+  }
+  else if(workMode==WorkMode_ON){
+    setOutputRelay(HIGH);
+    
+    resetSenserArgument();
+    resetDigitalArgument();
+    resetAnalogArgument();
+    resetTimingArgument();
   }
   else if(workMode==WorkMode_OFF){
     setOutputRelay(LOW);
-    type_modeUsingSeneser=SenserType_UNUSE;
     
-    pin_modeUsingSeneser=-1;
-    
-    levelOutput_whenDigitalHigh=-1;
-    
-    thresholdValue_analogPin=-1;
-    levelOutput_whenBiggerThanThreshold=-1;
-    numAnalogIgnore=-1;
+    resetSenserArgument();
+    resetDigitalArgument();
+    resetAnalogArgument();
+    resetTimingArgument();
   }
 }
+
+void resetSenserArgument(){
+    type_modeUsingSeneser=SenserType_UNUSE;
+    pin_modeUsingSeneser=-1;
+}
+void resetDigitalArgument(){
+  levelOutput_whenDigitalHigh=-1;
+}
+void resetAnalogArgument(){
+    thresholdValue_analogPin=-1;
+    levelOutput_whenBiggerThanThreshold=-1;
+    targetLevelLast_analogIgnore=-1;
+    numAnalogIgnore=-1;
+}
+void resetTimingArgument(){
+  mode_afterTimeout=WorkMode_OFF;
+  time_timingTarget=-1;
+}
+
 
 void wifiRestart(){
   wifi.setTransportToTCP();       // TCP模式（默认设置）

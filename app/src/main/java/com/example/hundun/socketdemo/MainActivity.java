@@ -27,6 +27,8 @@ public class MainActivity extends Activity{
 
     public static final String URI = "content://sms/";
 
+    private Thread commandThread;
+
     //UI
     Button btn_accept;
     Button btn_modeOn;
@@ -34,6 +36,7 @@ public class MainActivity extends Activity{
     Button btn_modeAnalog;
     EditText txtCommand;
     EditText txtEcho;
+    Button btn_coffee;
 
     //abstract
 
@@ -41,8 +44,13 @@ public class MainActivity extends Activity{
     final String CMD_ON="-MODE on";
     final String CMD_OFF="-MODE off";
     final String CMD_ANALOG="-MODE heat";
+    final String CMD_TIMING_ON="-MODE timing_on";
+    final String CMD_TIMING_OFF="-MODE timing_off";
 
+    final String SMS_COFFEE="coffee";
+    final String CMD_SET_TIME="-TIMING ";
 
+    final int COMMIT_SPACE_DELAY=500;
 
 
 
@@ -57,6 +65,7 @@ public class MainActivity extends Activity{
         btn_modeAnalog = (Button) findViewById(R.id.btn_modeAnalog);
         txtCommand=(EditText) findViewById(R.id.txtCommand);
         txtEcho=(EditText) findViewById(R.id.txtEcho);
+        btn_coffee= (Button) findViewById(R.id.btn_coffee);
 
         //注册内容观察者
         SMSContentObserver smsContentObserver =
@@ -73,6 +82,9 @@ public class MainActivity extends Activity{
                 if(message.equals(CMD_ON)||message.equals(CMD_OFF)||message.equals(CMD_ANALOG)){
                     txtCommand.setText(message);
                     commitCommand();
+                }
+                else if(message.equals(SMS_COFFEE)){
+                    orderCoffee();
                 }
             }
         });
@@ -97,15 +109,47 @@ public class MainActivity extends Activity{
             public void onClick(View v) {
                 txtCommand.setText(CMD_ANALOG);
             }});
+        btn_coffee.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                orderCoffee();
+            }});
 
         //Toast.makeText(getApplicationContext(), "init",Toast.LENGTH_SHORT).show();
     }
 
     private void commitCommand(){
+        //wait last command finish
+        try
+        {
+            if(commandThread!=null)
+                commandThread.join();
+        }
+        catch (InterruptedException e)
+        {
+            e.printStackTrace();
+        }
+        //wait Arduino handler finish
+        new Handler().postDelayed(new Runnable(){
+            public void run() {
+            }
+        }, COMMIT_SPACE_DELAY);
+
         String command=txtCommand.getText().toString();
-        txtCommand.setText("");
-        Thread thread=new MyThread(command,txtEcho);
-        thread.start();
+        commandThread=new MyThread(command,txtEcho);
+        commandThread.start();
+    }
+
+    private void orderCoffee(){
+        //step 1,set on
+        txtCommand.setText(CMD_ON);
+        commitCommand();
+        //step 2,set timing off
+        txtCommand.setText(CMD_TIMING_OFF);
+        commitCommand();
+        //step 3,set time for cooking coffee(150sec)
+        txtCommand.setText(CMD_SET_TIME+String.valueOf(150));
+        commitCommand();
     }
 
     private String acceptServer(String command) throws IOException {
@@ -164,6 +208,7 @@ public class MainActivity extends Activity{
             try {
                 String echo=acceptServer(command);
                 txtEcho.append("\n"+echo);
+
             } catch (Exception e) {
                 e.printStackTrace();
                 //Toast.makeText(getApplicationContext(), e.getMessage(),Toast.LENGTH_SHORT).show();
